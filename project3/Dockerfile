@@ -9,7 +9,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # ─── STAGE 2: Python/Django runtime ───────────────────────────────────────────
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # Prevent Python from writing pyc files
 ENV PYTHONDONTWRITEBYTECODE=1
