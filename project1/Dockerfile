@@ -1,6 +1,6 @@
 # ─── STAGE 1: Install dependencies ───────────────────────────────────────────
 # Use official Node LTS on slim Debian. We'll strip it to non-root in stage 2.
-FROM node:20-slim AS builder
+FROM node:26-slim AS builder
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ RUN npm ci --omit=dev --ignore-scripts
 
 # ─── STAGE 2: Runtime image ───────────────────────────────────────────────────
 # node:20-slim is the runtime base — no build tools, no shell history
-FROM node:20-slim AS runtime
+FROM node:26-slim AS runtime
 
 # Set NODE_ENV so Express runs in production mode (disables stack traces in errors)
 ENV NODE_ENV=production
