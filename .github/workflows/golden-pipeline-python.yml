@@ -49,8 +49,14 @@ jobs:
     name: Verify requirements.txt exists
     runs-on: ubuntu-latest
     steps:
+      - name: Harden Runner (monitor/block unexpected egress)
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Fail if requirements.txt is missing
         run: |
           set -euo pipefail
@@ -61,32 +67,37 @@ jobs:
           echo "Dependency manifest present: ${{ inputs.project-path }}/requirements.txt"
 
   lint-test-audit:
-    name: Install, lint & audit
+    name: Lint & audit (no third-party package install needed)
     needs: verify-lockfile
     runs-on: ubuntu-latest
     steps:
+      - name: Harden Runner (monitor/block unexpected egress)
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
-          cache: pip
-          cache-dependency-path: ${{ inputs.project-path }}/requirements.txt
-      - name: Install dependencies
-        working-directory: ${{ inputs.project-path }}
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Lint with Ruff (non-compiled Python must be linted)
+      # Neither Ruff nor pip-audit (run with --no-deps below) need the project's
+      # third-party dependencies installed, so this job never runs `pip install`
+      # on untrusted packages - zero arbitrary-code-execution risk here.
+      - name: Lint with Ruff (non-compiled Python must be linted; static analysis only)
         run: |
           pip install ruff==0.15.22
           ruff check "${{ inputs.project-path }}"
-      - name: pip-audit (defense in depth; the PR-blocking gate is dependency-review)
+      # --no-deps checks the exact pinned versions against known vulnerabilities
+      # without resolving/building/installing any third-party package (pip's own
+      # dependency resolution can itself execute a package's build backend code).
+      - name: pip-audit (manifest-only, no package installs; defense in depth - the PR-blocking gate is dependency-review)
         continue-on-error: true
         run: |
           pip install pip-audit==2.10.1
-          pip-audit -r "${{ inputs.project-path }}/requirements.txt"
+          pip-audit --no-deps -r "${{ inputs.project-path }}/requirements.txt"
 
   codeql:
     name: CodeQL analysis
@@ -96,8 +107,14 @@ jobs:
       contents: read
       security-events: write
     steps:
+      - name: Harden Runner (monitor/block unexpected egress)
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Initialize CodeQL
         uses: github/codeql-action/init@e0647621c2984b5ed2f768cb892365bf2a616ad1 # v4.37.2
         with:
@@ -116,8 +133,14 @@ jobs:
       security-events: write
     continue-on-error: true
     steps:
+      - name: Harden Runner (monitor/block unexpected egress)
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -145,8 +168,14 @@ jobs:
       packages: write
       pull-requests: write
     steps:
+      - name: Harden Runner (monitor/block unexpected egress)
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Compute image name
         id: vars
         run: |
@@ -177,10 +206,8 @@ jobs:
           sarif_file: trivy-${{ inputs.project-name }}.sarif
           category: trivy-${{ inputs.project-name }}
       # Docker Scout needs its own Docker Hub login (independent of the GHCR login
-      # below) to query its vulnerability/recommendation database. Skips cleanly if
-      # the DOCKERHUB_USERNAME/DOCKERHUB_TOKEN repo secrets haven't been configured.
+      # below) to query its vulnerability/recommendation database.
       - name: Log in to Docker Hub (required for Docker Scout)
-        if: ${{ secrets.DOCKERHUB_TOKEN != '' }}
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -188,7 +215,6 @@ jobs:
       # Reports the vulnerability count and, on PRs, comments with a suggested
       # base-image upgrade to eliminate as many findings as possible.
       - name: Docker Scout - vulnerabilities & suggested base image upgrade
-        if: ${{ secrets.DOCKERHUB_TOKEN != '' }}
         uses: docker/scout-action@2688993af7bafd6ba8c6a74ec652442be91dd82b # v1.23.1
         with:
           command: cves,recommendations
