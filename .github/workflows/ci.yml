@@ -1,0 +1,193 @@
+name: CI
+
+# Single entry point for the monorepo. Detects which project(s) changed (or, for
+# tag pushes, which project a tag belongs to) and dispatches to the right golden
+# pipeline for that tech stack:
+#   - project1, project2 (Node.js/Express) -> golden-pipeline-node.yml
+#   - project3           (Python/Django)    -> golden-pipeline-python.yml
+#
+# Tag naming convention for per-project releases: "<project>-v<version>",
+# e.g. "project1-v1.2.3", "project2-v2.0.0", "project3-v0.4.1".
+#
+# See README.md for the full list of pipeline rules this workflow implements.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main]
+    tags: ['project1-v*', 'project2-v*', 'project3-v*']
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Detect which projects changed (PRs) or were touched by a push to main ────
+  detect-changes:
+    name: Detect changed projects
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    outputs:
+      project1: ${{ steps.filter.outputs.project1 }}
+      project2: ${{ steps.filter.outputs.project2 }}
+      project3: ${{ steps.filter.outputs.project3 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Determine changed projects
+        id: filter
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+          fi
+
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BASE_SHA" 2>/dev/null; then
+            echo "No usable base commit found; treating all projects as changed."
+            CHANGED=""
+            ALL_CHANGED=true
+          else
+            CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+            ALL_CHANGED=false
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          for p in project1 project2 project3; do
+            if [ "$ALL_CHANGED" = true ] || echo "$CHANGED" | grep -q "^$p/"; then
+              echo "$p=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$p=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
+  # ── Determine which project a release tag belongs to ─────────────────────────
+  detect-tag-target:
+    name: Determine project from release tag
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    outputs:
+      project: ${{ steps.parse.outputs.project }}
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - name: Parse tag
+        id: parse
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          PROJECT="${TAG%%-v*}"
+          VERSION="v${TAG#*-v}"
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  # ── Third-party dependency scanning: always runs first, before any install ───
+  # step, to reduce the blast radius of malicious packages (README rule).
+  dependency-review:
+    name: Third-party dependency scan (PR gate)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Dependency review
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        # "urgent fix" label lets a PR skip this quality gate (README rule).
+        continue-on-error: ${{ contains(github.event.pull_request.labels.*.name, 'urgent-fix') }}
+        with:
+          fail-on-severity: critical
+          comment-summary-in-pr: always
+
+  # ── Secret scanning: every PR, last 50 commits, report on the PR ──────────────
+  secret-scan:
+    name: Secret scan (last 50 commits)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+    steps:
+      - name: Checkout (last 50 commits)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 50
+      - name: Gitleaks secret scan
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── project1: Node/Express API ────────────────────────────────────────────────
+  project1:
+    name: project1
+    needs: [detect-changes, dependency-review, detect-tag-target]
+    if: |
+      always() &&
+      (
+        (needs.detect-changes.result == 'success' && needs.detect-changes.outputs.project1 == 'true' && (needs.dependency-review.result == 'success' || needs.dependency-review.result == 'skipped')) ||
+        (needs.detect-tag-target.result == 'success' && needs.detect-tag-target.outputs.project == 'project1')
+      )
+    permissions:
+      contents: read
+      security-events: write
+      packages: write
+      pull-requests: write
+    uses: ./.github/workflows/golden-pipeline-node.yml
+    with:
+      project-path: project1
+      project-name: project1
+      publish: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || startsWith(github.ref, 'refs/tags/project1-v') }}
+      image-tag: ${{ startsWith(github.ref, 'refs/tags/project1-v') && needs.detect-tag-target.outputs.version || 'latest' }}
+
+  # ── project2: Node monorepo (frontend + backend) ──────────────────────────────
+  project2:
+    name: project2
+    needs: [detect-changes, dependency-review, detect-tag-target]
+    if: |
+      always() &&
+      (
+        (needs.detect-changes.result == 'success' && needs.detect-changes.outputs.project2 == 'true' && (needs.dependency-review.result == 'success' || needs.dependency-review.result == 'skipped')) ||
+        (needs.detect-tag-target.result == 'success' && needs.detect-tag-target.outputs.project == 'project2')
+      )
+    permissions:
+      contents: read
+      security-events: write
+      packages: write
+      pull-requests: write
+    uses: ./.github/workflows/golden-pipeline-node.yml
+    with:
+      project-path: project2
+      project-name: project2
+      publish: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || startsWith(github.ref, 'refs/tags/project2-v') }}
+      image-tag: ${{ startsWith(github.ref, 'refs/tags/project2-v') && needs.detect-tag-target.outputs.version || 'latest' }}
+
+  # ── project3: Django + frontend ────────────────────────────────────────────────
+  project3:
+    name: project3
+    needs: [detect-changes, dependency-review, detect-tag-target]
+    if: |
+      always() &&
+      (
+        (needs.detect-changes.result == 'success' && needs.detect-changes.outputs.project3 == 'true' && (needs.dependency-review.result == 'success' || needs.dependency-review.result == 'skipped')) ||
+        (needs.detect-tag-target.result == 'success' && needs.detect-tag-target.outputs.project == 'project3')
+      )
+    permissions:
+      contents: read
+      security-events: write
+      packages: write
+      pull-requests: write
+    uses: ./.github/workflows/golden-pipeline-python.yml
+    with:
+      project-path: project3
+      project-name: project3
+      publish: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || startsWith(github.ref, 'refs/tags/project3-v') }}
+      image-tag: ${{ startsWith(github.ref, 'refs/tags/project3-v') && needs.detect-tag-target.outputs.version || 'latest' }}
