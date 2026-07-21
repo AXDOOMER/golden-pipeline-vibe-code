@@ -1,7 +1,7 @@
 # ─── STAGE 1: Build the frontend ──────────────────────────────────────────────
 # settings.py wires STATICFILES_DIRS to frontend/dist/assets, so the Vite
 # build MUST happen before `collectstatic` runs in stage 2.
-FROM node:20-slim AS frontend-build
+FROM node:26-slim AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
