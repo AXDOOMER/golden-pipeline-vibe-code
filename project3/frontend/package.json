@@ -1,0 +1,10 @@
+{
+  "name": "prepro-tracker-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Frontend assets for the Prepro Tracker Django app",
+  "scripts": {
+    "build": "node build.js",
+    "dev": "node build.js"
+  }
+}
