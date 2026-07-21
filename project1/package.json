@@ -1,0 +1,37 @@
+{
+  "name": "rulubu-designer-app-api",
+  "version": "1.0.0",
+  "description": "App Server",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start":    "node src/server.js",
+    "dev":      "NODE_ENV=development node src/server.js",
+    "test":     "node tests/security.test.js",
+    "lint":     "npx eslint src/",
+    "audit":    "npm audit --audit-level=high"
+  },
+  "dependencies": {
+    "@google-cloud/logging":        "^11.1.0",
+    "@google-cloud/secret-manager": "^5.5.0",
+    "@google-cloud/storage":        "^7.11.0",
+    "express":                      "^4.19.2",
+    "express-rate-limit":           "^7.3.1",
+    "google-auth-library":          "^9.11.0",
+    "helmet":                       "^7.1.0",
+    "multer":                       "^1.4.5-lts.1",
+    "node-fetch":                   "^2.7.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.3.0"
+  },
+  "eslintConfig": {
+    "env":   { "node": true, "es2022": true },
+    "rules": {
+      "no-console":     "off",
+      "no-unused-vars": "warn"
+    }
+  }
+}
