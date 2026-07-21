@@ -33,6 +33,13 @@ on:
         required: false
         type: string
         default: ''
+    secrets:
+      DOCKERHUB_USERNAME:
+        description: Docker Hub username, required only for the optional Docker Scout steps
+        required: false
+      DOCKERHUB_TOKEN:
+        description: Docker Hub access token, required only for the optional Docker Scout steps
+        required: false
 
 permissions:
   contents: read
