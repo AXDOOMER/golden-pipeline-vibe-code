@@ -1,5 +1,5 @@
 # Stage 1: Build the frontend
-FROM node:20-slim AS frontend-build
+FROM node:26-slim AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm install
@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Build the backend and runtime
-FROM node:20-slim
+FROM node:26-slim
 WORKDIR /app
 
 # Copy backend files
