@@ -141,11 +141,15 @@ jobs:
   # ── project1: Node/Express API ────────────────────────────────────────────────
   project1:
     name: project1
-    needs: [detect-changes, dependency-review, detect-tag-target]
+    needs: [dependency-review, detect-tag-target]
+    # TEMP (CI-scripts dev mode): change detection is bypassed so every PR/push
+    # runs all three projects, regardless of what changed. Restore the
+    # `needs.detect-changes.outputs.project1 == 'true'` check (see git history)
+    # once you're done iterating on the pipelines themselves.
     if: |
       always() &&
       (
-        (needs.detect-changes.result == 'success' && needs.detect-changes.outputs.project1 == 'true' && (needs.dependency-review.result == 'success' || needs.dependency-review.result == 'skipped')) ||
+        ((github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && (needs.dependency-review.result == 'success' || needs.dependency-review.result == 'skipped')) ||
         (needs.detect-tag-target.result == 'success' && needs.detect-tag-target.outputs.project == 'project1')
       )
     permissions:
@@ -164,11 +168,12 @@ jobs:
   # ── project2: Node monorepo (frontend + backend) ──────────────────────────────
   project2:
     name: project2
-    needs: [detect-changes, dependency-review, detect-tag-target]
+    needs: [dependency-review, detect-tag-target]
+    # TEMP (CI-scripts dev mode): see project1's comment above.
     if: |
       always() &&
       (
-        (needs.detect-changes.result == 'success' && needs.detect-changes.outputs.project2 == 'true' && (needs.dependency-review.result == 'success' || needs.dependency-review.result == 'skipped')) ||
+        ((github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && (needs.dependency-review.result == 'success' || needs.dependency-review.result == 'skipped')) ||
         (needs.detect-tag-target.result == 'success' && needs.detect-tag-target.outputs.project == 'project2')
       )
     permissions:
@@ -187,11 +192,12 @@ jobs:
   # ── project3: Django + frontend ────────────────────────────────────────────────
   project3:
     name: project3
-    needs: [detect-changes, dependency-review, detect-tag-target]
+    needs: [dependency-review, detect-tag-target]
+    # TEMP (CI-scripts dev mode): see project1's comment above.
     if: |
       always() &&
       (
-        (needs.detect-changes.result == 'success' && needs.detect-changes.outputs.project3 == 'true' && (needs.dependency-review.result == 'success' || needs.dependency-review.result == 'skipped')) ||
+        ((github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')) && (needs.dependency-review.result == 'success' || needs.dependency-review.result == 'skipped')) ||
         (needs.detect-tag-target.result == 'success' && needs.detect-tag-target.outputs.project == 'project3')
       )
     permissions:

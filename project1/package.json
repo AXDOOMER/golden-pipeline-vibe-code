@@ -26,12 +26,5 @@
   },
   "devDependencies": {
     "eslint": "^9.3.0"
-  },
-  "eslintConfig": {
-    "env":   { "node": true, "es2022": true },
-    "rules": {
-      "no-console":     "off",
-      "no-unused-vars": "warn"
-    }
   }
 }
